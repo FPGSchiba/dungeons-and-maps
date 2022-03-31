@@ -14,11 +14,11 @@ public class CameraMove : MonoBehaviour
     public float minHeight = 10f;
 
     [Header("Privates")]
-    [GreyOut] public float startHeight;
+    [GreyOut] public float currentHeight;
 
     void Start()
     {
-        startHeight = transform.position.y;
+        currentHeight = transform.position.y;
     }
 
     void Update()
@@ -29,9 +29,8 @@ public class CameraMove : MonoBehaviour
 
         Vector3 move = transform.right * x + transform.forward * z;
         controller.Move(move * speed * Time.deltaTime);
-        transform.position = new Vector3(transform.position.x, startHeight, transform.position.z);
-
-        Vector3 downMove = Vector3.down * y;
-        transform.position += downMove;
+        currentHeight += y * scrollSpeed * Time.deltaTime;
+        currentHeight = Mathf.Clamp(currentHeight, minHeight, maxHeight);
+        transform.position = new Vector3(transform.position.x, currentHeight, transform.position.z);
     }
 }

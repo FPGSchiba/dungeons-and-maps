@@ -1,33 +1,48 @@
 ﻿using UnityEngine;
+using UnityEngine.UI;
 using System.Linq;
+using System.Collections;
 
 public class LevelGeneration : MonoBehaviour {
 
-	[SerializeField]
-	private int mapWidthInTiles, mapDepthInTiles;
-
+	[Header("References")]
 	[SerializeField]
 	private GameObject tilePrefab;
+	public GameObject viewer;
+	public GameObject generatingCanvas;
+	public Slider generationProgress;
 
-	void Start() {
-		GenerateMap();
+	[Header("Settings")]
+	[Min(0)]
+	public int viewDistance;
+	[Min(0)]
+	public int worldSize;
+	[Header("Privates")]
+	[GreyOut] public int mapWidthInTiles, mapDepthInTiles;
+
+	void Start()
+	{
+		StartCoroutine(nameof(GenerateMap));
 	}
 
-	void GenerateMap() {
+	IEnumerator GenerateMap()
+	{
+		generatingCanvas.SetActive(true);
 		// get the tile dimensions from the tile Prefab
 		Vector3 tileSize = tilePrefab.GetComponent<MeshRenderer>().bounds.size;
 		int tileWidth = (int)tileSize.x;
 		int tileDepth = (int)tileSize.z;
+		mapDepthInTiles = worldSize;
+		mapWidthInTiles = worldSize;
 
 		TileGenerationSettings settings = new TileGenerationSettings();
-
+		Vector3 startingPosition = new Vector3(viewer.transform.position.x - worldSize * tileWidth / 2, transform.position.y, viewer.transform.position.z - worldSize * tileWidth / 2);
+		int count = 0;
 		// for each Tile, instantiate a Tile in the correct position
 		for (int xTileIndex = 0; xTileIndex < mapWidthInTiles; xTileIndex++) {
 			for (int zTileIndex = 0; zTileIndex < mapDepthInTiles; zTileIndex++) {
 				// calculate the tile position based on the X and Z indices
-				Vector3 tilePosition = new Vector3(this.gameObject.transform.position.x + xTileIndex * tileWidth, 
-					this.gameObject.transform.position.y, 
-					this.gameObject.transform.position.z + zTileIndex * tileDepth);
+				Vector3 tilePosition = new Vector3(startingPosition.x + xTileIndex * tileWidth, transform.position.y, startingPosition.z + zTileIndex * tileDepth);
 				// instantiate a new Tile
 				GameObject tile = Instantiate(tilePrefab, tilePosition, Quaternion.identity) as GameObject;
 				TileGeneration tileGeneration = tile.GetComponent<TileGeneration>();
@@ -35,8 +50,14 @@ public class LevelGeneration : MonoBehaviour {
 				tileGeneration.levelScale = settings.levelScale;
 				tileGeneration.heightCurve = settings.heightCurve;
 				tileGeneration.waves = settings.waves;
+				count++;
+				generationProgress.value = (float)count * 100f / (float)(worldSize*worldSize);
+				yield return null;
 			}
 		}
+
+		generatingCanvas.SetActive(false);
+		yield return null;
 	}
 
 	public void RegenerateMap()
@@ -46,15 +67,31 @@ public class LevelGeneration : MonoBehaviour {
 		{
 			Destroy(tile);
 		}
-
-		GenerateMap();
-	}
-
-	private void OnDrawGizmos()
-	{
-		Gizmos.DrawSphere(transform.position, 12f);
+		StartCoroutine(nameof(GenerateMap));
 	}
 	
+	void OnDrawGizmos()
+	{
+		Vector3 tileSize = tilePrefab.GetComponent<MeshRenderer>().bounds.size;
+		int tileWidth = (int)tileSize.x;
+		Gizmos.DrawWireSphere(viewer.transform.position, viewDistance * tileWidth);
+		Gizmos.color = Color.black;
+		Vector3 startingPosition = new Vector3(viewer.transform.position.x - worldSize * tileWidth / 2, transform.position.y, viewer.transform.position.z - worldSize * tileWidth / 2);
+		Vector3 currentPosition = startingPosition;
+		for(int i = 0; i <= worldSize; i++)
+		{
+			Vector3 opposite = currentPosition + Vector3.right * worldSize * tileWidth;
+			Gizmos.DrawLine(currentPosition, opposite);
+			currentPosition += Vector3.forward * tileWidth;
+		}
+		currentPosition -= Vector3.forward * tileWidth;
+		for(int i = 0; i <= worldSize; i++)
+		{
+			Vector3 opposite = currentPosition + Vector3.back * worldSize * tileWidth;
+			Gizmos.DrawLine(currentPosition, opposite);
+			currentPosition += Vector3.right * tileWidth;
+		}
+	}
 }
 
 [System.Serializable]
