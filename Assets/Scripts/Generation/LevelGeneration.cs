@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 using UnityEngine.UI;
 using System.Linq;
 using System.Collections;
@@ -17,8 +18,32 @@ public class LevelGeneration : MonoBehaviour {
 	public int viewDistance;
 	[Min(0)]
 	public int worldSize;
+	[Min(0)]
+	public float checkInterval;
+	[Min(1)]
+	public float checkSphereRadius;
+	public LayerMask layerMask;
+
 	[Header("Privates")]
 	[GreyOut] public int mapWidthInTiles, mapDepthInTiles;
+	[GreyOut] public TileGenerationSettings settings;
+	[GreyOut] public int tileDepth;
+	[GreyOut] public float timeCounter;
+
+	void Update()
+	{
+		if (!generatingCanvas.activeSelf)
+		{
+			if (timeCounter >= checkInterval)
+			{
+				deleteNotVisibleTiles();
+				generateNewMap();
+				timeCounter = 0f;
+			}
+
+			timeCounter += Time.deltaTime;
+		}
+	}
 
 	void Start()
 	{
@@ -28,28 +53,23 @@ public class LevelGeneration : MonoBehaviour {
 	IEnumerator GenerateMap()
 	{
 		generatingCanvas.SetActive(true);
-		// get the tile dimensions from the tile Prefab
 		Vector3 tileSize = tilePrefab.GetComponent<MeshRenderer>().bounds.size;
 		int tileWidth = (int)tileSize.x;
-		int tileDepth = (int)tileSize.z;
+		tileDepth = (int)tileSize.z;
 		mapDepthInTiles = worldSize;
 		mapWidthInTiles = worldSize;
 
-		TileGenerationSettings settings = new TileGenerationSettings();
+		settings = new TileGenerationSettings();
 		Vector3 startingPosition = new Vector3(viewer.transform.position.x - worldSize * tileWidth / 2, transform.position.y, viewer.transform.position.z - worldSize * tileWidth / 2);
 		int count = 0;
-		// for each Tile, instantiate a Tile in the correct position
 		for (int xTileIndex = 0; xTileIndex < mapWidthInTiles; xTileIndex++) {
 			for (int zTileIndex = 0; zTileIndex < mapDepthInTiles; zTileIndex++) {
-				// calculate the tile position based on the X and Z indices
 				Vector3 tilePosition = new Vector3(startingPosition.x + xTileIndex * tileWidth, transform.position.y, startingPosition.z + zTileIndex * tileDepth);
-				// instantiate a new Tile
-				GameObject tile = Instantiate(tilePrefab, tilePosition, Quaternion.identity) as GameObject;
-				TileGeneration tileGeneration = tile.GetComponent<TileGeneration>();
-				tileGeneration.heightMultiplier = settings.heightMultiplier;
-				tileGeneration.levelScale = settings.levelScale;
-				tileGeneration.heightCurve = settings.heightCurve;
-				tileGeneration.waves = settings.waves;
+				float distance = Vector2.Distance(new Vector2(viewer.transform.position.x, viewer.transform.position.z), new Vector2(tilePosition.x, tilePosition.z)) / tileWidth;
+				if (distance <= viewDistance)
+				{
+					createNewTile(tilePosition);
+				}
 				count++;
 				generationProgress.value = (float)count * 100f / (float)(worldSize*worldSize);
 				yield return null;
@@ -74,7 +94,7 @@ public class LevelGeneration : MonoBehaviour {
 	{
 		Vector3 tileSize = tilePrefab.GetComponent<MeshRenderer>().bounds.size;
 		int tileWidth = (int)tileSize.x;
-		Gizmos.DrawWireSphere(viewer.transform.position, viewDistance * tileWidth);
+		Gizmos.DrawWireSphere(new Vector3(viewer.transform.position.x, 0f, viewer.transform.position.z), viewDistance * tileWidth);
 		Gizmos.color = Color.black;
 		Vector3 startingPosition = new Vector3(viewer.transform.position.x - worldSize * tileWidth / 2, transform.position.y, viewer.transform.position.z - worldSize * tileWidth / 2);
 		Vector3 currentPosition = startingPosition;
@@ -92,6 +112,66 @@ public class LevelGeneration : MonoBehaviour {
 			currentPosition += Vector3.right * tileWidth;
 		}
 	}
+
+	private void createNewTile(Vector3 position)
+	{
+		if(Physics.CheckSphere(position, checkSphereRadius, layerMask))
+		{
+			return;
+		}
+		GameObject tile = Instantiate(tilePrefab, position, Quaternion.identity) as GameObject;
+		TileGeneration tileGeneration = tile.GetComponent<TileGeneration>();
+		tileGeneration.heightMultiplier = settings.heightMultiplier;
+		tileGeneration.levelScale = settings.levelScale;
+		tileGeneration.heightCurve = settings.heightCurve;
+		tileGeneration.waves = settings.waves;
+	}
+
+	private void deleteNotVisibleTiles()
+	{
+		var objects = Resources.FindObjectsOfTypeAll<GameObject>().Where(obj => obj.name == "Test_Tile(Clone)");
+		foreach(var tile in objects)
+		{
+			Vector2 viewerPosition = new Vector2(viewer.transform.position.x, viewer.transform.position.z);
+			Vector2 tilePosition = new Vector2(tile.transform.position.x, tile.transform.position.z);
+			float distance = Vector2.Distance(viewerPosition, tilePosition) / tileDepth;
+			if (distance >= viewDistance)
+			{
+				Destroy(tile);
+			}
+		}
+	}
+
+	private Vector3 getCurrentTile()
+	{
+		RaycastHit tileHit;
+		if (Physics.Raycast(viewer.transform.position, transform.TransformDirection(Vector3.down), out tileHit, Mathf.Infinity, layerMask))
+		{
+			return tileHit.transform.position;
+		}
+		else
+		{
+			return new Vector3();
+		}
+	}
+
+	private void generateNewMap()
+	{
+		Vector3 currentTile = getCurrentTile();
+		int smallWorldSize = viewDistance - 1;
+		Vector3 startingPosition = new Vector3(currentTile.x - smallWorldSize * tileDepth / 2, transform.position.y, currentTile.z - smallWorldSize * tileDepth / 2);
+		var objects = Resources.FindObjectsOfTypeAll<GameObject>().Where(obj => obj.name == "Test_Tile(Clone)");
+		for (int xTileIndex = 0; xTileIndex < smallWorldSize; xTileIndex++) {
+			for (int zTileIndex = 0; zTileIndex < smallWorldSize; zTileIndex++) {
+				Vector3 tilePosition = new Vector3(startingPosition.x + xTileIndex * tileDepth, transform.position.y, startingPosition.z + zTileIndex * tileDepth);
+				float distance = Vector2.Distance(new Vector2(viewer.transform.position.x, viewer.transform.position.z), new Vector2(tilePosition.x, tilePosition.z)) / tileDepth;
+				if (distance <= viewDistance)
+				{
+					createNewTile(tilePosition);
+				}
+			}
+		}
+	}
 }
 
 [System.Serializable]
@@ -104,8 +184,8 @@ public class TileGenerationSettings
 
 	public TileGenerationSettings(int numWaves = 3)
 	{
-		this.heightMultiplier = Random.Range(1f, 3f);
-		this.levelScale = Random.Range(5f, 30f);
+		this.heightMultiplier = UnityEngine.Random.Range(1f, 3f);
+		this.levelScale = UnityEngine.Random.Range(5f, 30f);
 		this.heightCurve = this.GetAnimationCurve();
 		this.waves = this.GetWaves(numWaves);
 	}
@@ -128,9 +208,9 @@ public class TileGenerationSettings
 		for (int i = 0; i < waves.Length; i++)
 		{
 			Wave newWave = new Wave();
-			newWave.seed = Random.Range(100, 99999);
-			newWave.amplitude = Random.Range(0.3f, 1f);
-			newWave.frequency = Random.Range(0.3f, 1f);
+			newWave.seed = UnityEngine.Random.Range(100, 99999);
+			newWave.amplitude = UnityEngine.Random.Range(0.3f, 1f);
+			newWave.frequency = UnityEngine.Random.Range(0.3f, 1f);
 			waves[i] = newWave;
 		}
 		return waves;
